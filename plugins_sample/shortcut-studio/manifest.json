@@ -13,37 +13,37 @@
   "min_host_version": "0.9.3",
   "shortcuts": [
     {
-      "id": "studio_fan_boost",
+      "id": "sys_fan_boost",
       "name": "一键全速强冷",
-      "combo": "Ctrl+Alt+Shift+X",
+      "combo": "Ctrl+Shift+X",
       "action": { "type": "ToggleFanBoost" },
       "osd": true
     },
     {
-      "id": "studio_power_cycle",
+      "id": "sys_cycle_power_mode",
       "name": "循环切换性能模式",
-      "combo": "Ctrl+Alt+Shift+M",
+      "combo": "Ctrl+Shift+M",
       "action": { "type": "CyclePowerMode" },
       "osd": true
     },
     {
-      "id": "studio_refresh_toggle",
+      "id": "sys_toggle_refresh_rate",
       "name": "刷新率瞬切 (高刷/省电)",
-      "combo": "Ctrl+Alt+Shift+R",
+      "combo": "Ctrl+Shift+R",
       "action": { "type": "ToggleRefreshRate" },
       "osd": true
     },
     {
       "id": "studio_win_lock",
       "name": "Win 键锁定切换",
-      "combo": "Ctrl+Alt+Shift+W",
+      "combo": "Ctrl+Shift+W",
       "action": { "type": "ToggleWinLock" },
       "osd": true
     },
     {
       "id": "studio_monitor_off",
       "name": "挂机一键息屏",
-      "combo": "Ctrl+Alt+Shift+L",
+      "combo": "Ctrl+Shift+L",
       "action": { "type": "MonitorOff" },
       "osd": false
     }

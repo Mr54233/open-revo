@@ -434,14 +434,24 @@
 
     var MODE_NAMES = { 1: '办公', 2: '均衡', 3: '狂暴', 4: '自定义' };
 
-    /* ---------- 预置键（与 manifest.json shortcuts 保持一致） ---------- */
-    var DEFAULT_IDS = ['studio_fan_boost', 'studio_power_cycle', 'studio_refresh_toggle', 'studio_win_lock', 'studio_monitor_off'];
+    /* ---------- 预置键（与 manifest.json shortcuts 保持一致） ----------
+       前三条使用与宿主内置相同的 sys_* ID，宿主加载插件时按 ID 替换原始条目，
+       实现"覆盖原应用"：强冷还原为 Ctrl+Shift+X，其余保持宿主原键。 */
+    var DEFAULT_IDS = ['sys_fan_boost', 'sys_cycle_power_mode', 'sys_toggle_refresh_rate', 'studio_win_lock', 'studio_monitor_off'];
+    var HOST_OVERRIDE_IDS = ['sys_fan_boost', 'sys_cycle_power_mode', 'sys_toggle_refresh_rate'];
     var DEFAULT_FALLBACK = {
-      studio_fan_boost: { name: '一键全速强冷', combo: 'Ctrl+Alt+Shift+X' },
-      studio_power_cycle: { name: '循环切换性能模式', combo: 'Ctrl+Alt+Shift+M' },
-      studio_refresh_toggle: { name: '刷新率瞬切 (高刷/省电)', combo: 'Ctrl+Alt+Shift+R' },
-      studio_win_lock: { name: 'Win 键锁定切换', combo: 'Ctrl+Alt+Shift+W' },
-      studio_monitor_off: { name: '挂机一键息屏', combo: 'Ctrl+Alt+Shift+L' }
+      sys_fan_boost: { name: '一键全速强冷', combo: 'Ctrl+Shift+X' },
+      sys_cycle_power_mode: { name: '循环切换性能模式', combo: 'Ctrl+Shift+M' },
+      sys_toggle_refresh_rate: { name: '刷新率瞬切 (高刷/省电)', combo: 'Ctrl+Shift+R' },
+      studio_win_lock: { name: 'Win 键锁定切换', combo: 'Ctrl+Shift+W' },
+      studio_monitor_off: { name: '挂机一键息屏', combo: 'Ctrl+Shift+L' }
+    };
+    var DEFAULT_ACTIONS = {
+      sys_fan_boost: { type: 'ToggleFanBoost' },
+      sys_cycle_power_mode: { type: 'CyclePowerMode' },
+      sys_toggle_refresh_rate: { type: 'ToggleRefreshRate' },
+      studio_win_lock: { type: 'ToggleWinLock' },
+      studio_monitor_off: { type: 'MonitorOff' }
     };
 
     /* ---------- 工具 ---------- */
@@ -686,9 +696,13 @@
         if (!b.action) b.action = live ? live.action : { type: '__unknown' };
         used[id] = true;
         var dim = b.enabled === false;
+        var isHostOverride = HOST_OVERRIDE_IDS.indexOf(id) >= 0;
         var badge = ov
           ? (dim ? '<span class="scs-badge off">已停用</span>' : '<span class="scs-badge custom">已改键</span>')
           : '<span class="scs-badge default">预置</span>';
+        if (isHostOverride) {
+          badge += '<span class="scs-badge custom" title="以与宿主内置相同的 ID 注册，顶替原应用绑定：sys_fan_boost 由 Ctrl+Shift+F 改为 ' + esc(DEFAULT_FALLBACK[id].combo) + '，每次启动自动生效">覆盖原应用</span>';
+        }
         html += rowHtml(b, { conflicts: conflicts, originBadge: badge, dim: dim, deleteLabel: dim ? null : undefined });
       });
       $('rows-default').innerHTML = html;
@@ -786,18 +800,11 @@
       }
       overrides = overrides.filter(function (o) { return o.id !== id; });
       saveOverrides(overrides);
-      // 重新触发宿主加载 manifest 原始快捷键：先注销，靠用户在插件页重新开关或重启恢复；
-      // 这里直接按 manifest 默认值重新注册，效果等同还原。
+      // 还原 = 重新注册回 manifest 预置值（sys_* 条目即"覆盖原应用"值）
       var fb = DEFAULT_FALLBACK[id];
-      var actionByType = {
-        studio_fan_boost: { type: 'ToggleFanBoost' },
-        studio_power_cycle: { type: 'CyclePowerMode' },
-        studio_refresh_toggle: { type: 'ToggleRefreshRate' },
-        studio_win_lock: { type: 'ToggleWinLock' },
-        studio_monitor_off: { type: 'MonitorOff' }
-      };
-      if (fb && actionByType[id]) {
-        api.register({ id: id, name: fb.name, combo: fb.combo, action: actionByType[id], osd: id !== 'studio_monitor_off', enabled: true, swallow: false, plugin_id: PLUGIN_ID })
+      var act = DEFAULT_ACTIONS[id];
+      if (fb && act) {
+        api.register({ id: id, name: fb.name, combo: fb.combo, action: act, osd: id !== 'studio_monitor_off', enabled: true, swallow: false, plugin_id: PLUGIN_ID })
           .then(function () { return refreshLive(); })
           .then(function () { toast('已还原为预置配置'); render(); })
           .catch(function (e) { toast('还原失败：' + (e && e.message ? e.message : e), true); render(); });
@@ -1104,20 +1111,13 @@
         var live = null;
         liveShortcuts.forEach(function (s) { if (s.id === id) live = s; });
         var fb = DEFAULT_FALLBACK[id];
-        var actions = {
-          studio_fan_boost: { type: 'ToggleFanBoost' },
-          studio_power_cycle: { type: 'CyclePowerMode' },
-          studio_refresh_toggle: { type: 'ToggleRefreshRate' },
-          studio_win_lock: { type: 'ToggleWinLock' },
-          studio_monitor_off: { type: 'MonitorOff' }
-        };
         var b = (ov && !ov.disabled) ? ov : (live && live.enabled !== false ? live : null);
         if (!b) return; // 已停用的不导出
         arr.push({
           id: id,
           name: b.name || fb.name,
           combo: b.combo || fb.combo,
-          action: (b.action && b.action.type) ? b.action : actions[id],
+          action: (b.action && b.action.type) ? b.action : DEFAULT_ACTIONS[id],
           osd: b.osd !== false,
           swallow: !!b.swallow
         });
