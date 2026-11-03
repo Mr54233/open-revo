@@ -341,6 +341,7 @@
 
   <div class="scs-footnote" id="footnote">
     <b>持久化说明：</b>预置键随 OpenRevo 启动自动生效；自定义键保存在本机，<b>打开本页面时自动恢复注册</b>（宿主重启后首次触发前需打开一次本页）；要彻底开机自生效，点右上角「导出固化」把 JSON 粘贴进本插件 manifest.json 的 shortcuts 数组。<br />
+    <b>系统键覆写：</b>宿主内置快捷键（Ctrl+Shift+F/M/R）可通过「✎ 覆写」改键——以相同 ID 顶替注册表条目；重启后回到宿主原始值，打开本页自动重新覆写。<br />
     <b>已知限制：</b>摄像头 / 麦克风 / 防休眠 / 显卡直连 / 电池限额暂无宿主快捷键动作（列表中已灰显）；同一组合键冲突时，仅最先注册的一条生效。
   </div>
 
@@ -611,7 +612,8 @@
     var liveShortcuts = [];     // 宿主实时注册表快照
     var overrides = loadOverrides();
     var editingId = null;       // 正在编辑的条目 id（预置或自定义）
-    var editingOrigin = null;
+    var editingOrigin = null;   // 'manifest' | 'custom' | 'system'
+    var editingOrig = null;     // 覆写系统键时捕获的宿主原始绑定（供还原）
     var recording = false;
     var formCombo = '';
     var restoredCount = 0;
@@ -650,6 +652,13 @@
         btns += opts.deleteLabel
           ? '<button class="scs-btn small danger" data-act="delete" data-id="' + esc(binding.id) + '">' + opts.deleteLabel + '</button>'
           : '<button class="scs-btn small" data-act="restore" data-id="' + esc(binding.id) + '" title="清除改键/停用覆盖，恢复 manifest 原始配置">↩ 还原</button>';
+      } else if (opts.canOverride) {
+        /* 宿主系统内置快捷键：允许以相同 ID 重新注册实现覆写 */
+        btns += '<button class="scs-btn small" data-act="test" data-id="' + esc(binding.id) + '" title="立即触发一次测试效果">▶ 测试</button>';
+        btns += '<button class="scs-btn small" data-act="edit" data-id="' + esc(binding.id) + '" title="以相同 ID 重新注册，顶替宿主内置绑定（重启后恢复宿主原始值）">✎ 覆写</button>';
+        if (opts.overridden) {
+          btns += '<button class="scs-btn small" data-act="restore" data-id="' + esc(binding.id) + '" title="恢复宿主原始绑定">↩ 还原</button>';
+        }
       }
       return '<div class="scs-row' + (conflict ? ' conflict' : '') + (opts.dim ? ' disabled-row' : '') + '">' +
         '<span class="scs-kbd-group">' + comboToKeysHtml(binding.combo) + '</span>' +
@@ -705,10 +714,21 @@
       html = '';
       var others = liveShortcuts.filter(function (s) { return !used[s.id]; });
       others.forEach(function (s) {
-        var badge = s.plugin_id
-          ? '<span class="scs-badge default" title="来自插件 ' + esc(s.plugin_id) + '">插件</span>'
-          : '<span class="scs-badge default" title="OpenRevo 系统内置">系统</span>';
-        html += rowHtml(s, { conflicts: conflicts, originBadge: badge, readonly: true });
+        var ov = overrideOf(s.id);
+        var isSysOverride = !!(ov && ov.origin === 'system');
+        var isSystem = isSysOverride || !s.plugin_id;
+        var badge = isSysOverride
+          ? '<span class="scs-badge custom" title="宿主内置快捷键，已被本插件覆写（重启后恢复宿主原始值）">已覆写</span>'
+          : s.plugin_id
+            ? '<span class="scs-badge default" title="来自插件 ' + esc(s.plugin_id) + '">插件</span>'
+            : '<span class="scs-badge default" title="OpenRevo 系统内置，可点击覆写改键">系统 · 可覆写</span>';
+        html += rowHtml(s, {
+          conflicts: conflicts,
+          originBadge: badge,
+          readonly: !isSystem,
+          canOverride: isSystem,
+          overridden: isSysOverride
+        });
       });
       $('rows-others').innerHTML = html;
       $('count-others').textContent = others.length + ' 条';
@@ -757,6 +777,13 @@
     }
 
     function doRestore(id) {
+      // 系统内置键覆写 → 重注册回宿主原始值
+      if (SYS_DEFAULTS[id]) {
+        restoreSysOverride(id)
+          .then(function () { toast('已还原系统原始快捷键'); render(); })
+          .catch(function (e) { toast('还原失败：' + (e && e.message ? e.message : e), true); render(); });
+        return;
+      }
       overrides = overrides.filter(function (o) { return o.id !== id; });
       saveOverrides(overrides);
       // 重新触发宿主加载 manifest 原始快捷键：先注销，靠用户在插件页重新开关或重启恢复；
@@ -779,11 +806,68 @@
       }
     }
 
+    /* ---------- 覆写与还原 ---------- */
+    var SYS_DEFAULTS = {
+      sys_fan_boost: { name: '一键全速强冷切换', combo: 'Ctrl+Shift+F' },
+      sys_cycle_power_mode: { name: '循环切换性能模式', combo: 'Ctrl+Shift+M' },
+      sys_toggle_refresh_rate: { name: '屏幕刷新率瞬切 (高刷/省电)', combo: 'Ctrl+Shift+R' }
+    };
+    function sysActionById(id) {
+      return {
+        sys_fan_boost: { type: 'ToggleFanBoost' },
+        sys_cycle_power_mode: { type: 'CyclePowerMode' },
+        sys_toggle_refresh_rate: { type: 'ToggleRefreshRate' }
+      }[id] || null;
+    }
+
+    /* 覆写宿主系统内置快捷键：以相同 ID 重新注册，宿主注册表按 ID 替换旧条目 */
+    function saveSysOverride(binding) {
+      overrides = overrides.filter(function (o) { return o.id !== binding.id; });
+      overrides.push({
+        id: binding.id, name: binding.name, combo: binding.combo, action: binding.action,
+        osd: binding.osd !== false, swallow: !!binding.swallow, origin: 'system'
+      });
+      saveOverrides(overrides);
+    }
+
+    function restoreSysOverride(id) {
+      var fb = SYS_DEFAULTS[id];
+      var act = sysActionById(id);
+      if (!fb || !act) return Promise.reject(new Error('未知系统快捷键'));
+      // 以相同 ID 重注册回宿主原始值，并清除本地覆盖
+      return api.register({
+        id: id, name: fb.name, combo: fb.combo, action: act,
+        osd: true, enabled: true, swallow: false, plugin_id: null
+      }).then(function () {
+        overrides = overrides.filter(function (o) { return o.id !== id; });
+        saveOverrides(overrides);
+        return refreshLive();
+      });
+    }
+
     function doEdit(id) {
-      var target = overrideOf(id);
-      if (!target) {
+      var target = null;
+      // 系统覆写模式：直接进入表单，保存时以相同 ID 注册实现顶替
+      if (SYS_DEFAULTS[id]) {
+        var live = null;
+        liveShortcuts.forEach(function (s) { if (s.id === id) live = s; });
+        var fbSys = SYS_DEFAULTS[id];
+        target = JSON.parse(JSON.stringify(live || { id: id, name: fbSys.name, combo: fbSys.combo, action: sysActionById(id), osd: true }));
+        editingOrig = JSON.parse(JSON.stringify(live || null));   // 捕获宿主原始值供还原
+        editingId = id;
+        editingOrigin = 'system';
+        fillForm(target);
+        $('btn-cancel').style.display = '';
+        $('form-title').textContent = '✎ 覆写系统快捷键：' + target.name + '（以相同 ID 顶替宿主内置绑定）';
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        return;
+      }
+      var targetOv = overrideOf(id);
+      if (!targetOv) {
         liveShortcuts.forEach(function (s) { if (s.id === id) target = s; });
         if (target) target = JSON.parse(JSON.stringify(target));
+      } else {
+        target = targetOv;
       }
       if (!target) return;
       editingId = id;
@@ -971,6 +1055,7 @@
       var meta = ALL_ACTIONS[action.type] || {};
       var name = $('f-name').value.trim() || (meta.label || action.type) ;
       var isManifestEdit = editingOrigin === 'manifest' && editingId;
+      var isSystemEdit = editingOrigin === 'system' && editingId;
       var id = editingId || nextCustomId();
 
       var binding = {
@@ -981,25 +1066,28 @@
         osd: $('f-osd').checked,
         enabled: true,
         swallow: $('f-swallow').checked,
-        plugin_id: PLUGIN_ID
+        plugin_id: isSystemEdit ? null : PLUGIN_ID
       };
 
       api.register(binding)
         .then(function (ok) {
           if (!ok) throw new Error('宿主拒绝注册');
-          // 更新覆盖层
-          var entry = {
-            id: id, name: name, combo: combo, action: action,
-            osd: binding.osd, swallow: binding.swallow,
-            origin: isManifestEdit ? 'manifest' : 'custom'
-          };
-          overrides = overrides.filter(function (o) { return o.id !== id; });
-          overrides.push(entry);
-          saveOverrides(overrides);
+          if (isSystemEdit) {
+            saveSysOverride(binding);   // 覆写宿主内置键，持久化到覆盖层
+          } else {
+            var entry = {
+              id: id, name: name, combo: combo, action: action,
+              osd: binding.osd, swallow: binding.swallow,
+              origin: isManifestEdit ? 'manifest' : 'custom'
+            };
+            overrides = overrides.filter(function (o) { return o.id !== id; });
+            overrides.push(entry);
+            saveOverrides(overrides);
+          }
           return refreshLive();
         })
         .then(function () {
-          toast('已注册生效：' + name);
+          toast(isSystemEdit ? '已覆写系统快捷键：' + name : '已注册生效：' + name);
           clearForm();
           render();
         })
@@ -1078,10 +1166,13 @@
       var okCount = 0;
       pending.forEach(function (o) {
         chain = chain.then(function () {
-          return api.register({
+          // 系统覆写条目：不携带 plugin_id，以相同 ID 顶替宿主内置绑定
+          var binding = {
             id: o.id, name: o.name, combo: o.combo, action: o.action,
-            osd: o.osd !== false, enabled: true, swallow: !!o.swallow, plugin_id: PLUGIN_ID
-          }).then(function (ok) {
+            osd: o.osd !== false, enabled: true, swallow: !!o.swallow,
+            plugin_id: o.origin === 'system' ? null : PLUGIN_ID
+          };
+          return api.register(binding).then(function (ok) {
             if (ok) okCount++; else restoreFailed++;
           }).catch(function () { restoreFailed++; });
         });
