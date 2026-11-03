@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>快捷键工坊</title>
+  <style>
+    /* ============================================================
+       OpenRevo 快捷键工坊 (shortcut-studio)
+       Tab 型插件：沙盒 iframe 内运行，通过 postMessage 桥与宿主通信。
+       样式遵循 OpenRevo Design System Tokens（iframe 内本地镜像定义）。
+       ============================================================ */
+    :root {
+      --surface-base: rgba(11, 14, 20, 0.94);
+      --surface-card: rgba(22, 27, 34, 0.75);
+      --surface-card-hover: rgba(33, 38, 45, 0.85);
+      --surface-overlay: rgba(15, 23, 42, 0.85);
+      --surface-sunken: rgba(0, 0, 0, 0.35);
+      --surface-pill: rgba(255, 255, 255, 0.05);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-medium: rgba(255, 255, 255, 0.15);
+      --border-highlight: rgba(255, 255, 255, 0.30);
+      --text-primary: #f8fafc;
+      --text-secondary: #cbd5e1;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --status-ok: #10b981;
+      --status-warn: #f59e0b;
+      --status-error: #ef4444;
+      --accent-indigo: #6366f1;
+      --accent-indigo-dim: rgba(99, 102, 241, 0.18);
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --radius-xs: 5px;
+      --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--surface-base);
+      color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", Roboto, sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+      min-height: 100vh;
+      padding: 14px 16px 20px;
+      user-select: none;
+    }
+
+    /* ---------- 顶栏 ---------- */
+    .scs-header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+    .scs-header h1 { font-size: 16px; font-weight: 700; letter-spacing: 0.02em; }
+    .scs-header .scs-sub { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+    .scs-header-actions { margin-left: auto; display: flex; gap: 8px; }
+
+    .scs-banner {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 11px; margin: 10px 0 4px;
+      border-radius: var(--radius-md);
+      font-size: 11.5px; line-height: 1.45;
+      border: 1px solid var(--border-subtle);
+      background: var(--surface-pill);
+      color: var(--text-muted);
+      user-select: text;
+    }
+    .scs-banner.ok    { border-color: rgba(16, 185, 129, 0.35); background: rgba(16, 185, 129, 0.08); color: #6ee7b7; }
+    .scs-banner.warn  { border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.08); color: #fcd34d; }
+    .scs-banner.error { border-color: rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.08); color: #fca5a5; }
+    .scs-banner.hidden { display: none; }
+
+    /* ---------- 区块 ---------- */
+    .scs-section { margin-top: 16px; }
+    .scs-section-title {
+      display: flex; align-items: baseline; gap: 8px;
+      font-size: 12.5px; font-weight: 700; color: var(--text-secondary);
+      margin-bottom: 9px; letter-spacing: 0.03em;
+    }
+    .scs-section-title .scs-count {
+      font-size: 10px; font-weight: 600; color: var(--text-dim);
+      background: var(--surface-pill); border: 1px solid var(--border-subtle);
+      padding: 1px 7px; border-radius: 999px;
+    }
+
+    /* ---------- 绑定行 ---------- */
+    .scs-rows { display: flex; flex-direction: column; gap: 7px; }
+    .scs-row {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 9px 12px;
+      transition: border-color var(--transition-fast), background var(--transition-fast);
+    }
+    .scs-row:hover { background: var(--surface-card-hover); border-color: var(--border-medium); }
+    .scs-row.conflict { border-color: rgba(239, 68, 68, 0.55); }
+    .scs-row.disabled-row { opacity: 0.5; }
+    .scs-row-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+    .scs-row-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .scs-row-desc { font-size: 10.5px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .scs-row-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+
+    .scs-badge {
+      font-size: 9.5px; font-weight: 600; padding: 1px 6px; border-radius: var(--radius-xs);
+      border: 1px solid var(--border-subtle); color: var(--text-dim); background: var(--surface-pill);
+      line-height: 1.5; white-space: nowrap;
+    }
+    .scs-badge.default { color: #94a3b8; }
+    .scs-badge.custom  { color: #a5b4fc; border-color: rgba(99, 102, 241, 0.4); background: var(--accent-indigo-dim); }
+    .scs-badge.off     { color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); }
+    .scs-badge.conflict{ color: #fca5a5; border-color: rgba(239, 68, 68, 0.45); background: rgba(239, 68, 68, 0.1); }
+
+    /* ---------- 键帽 ---------- */
+    .scs-kbd-group { display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0; }
+    .scs-kbd {
+      display: inline-block; min-width: 22px; text-align: center;
+      font-family: Consolas, "Courier New", monospace; font-size: 11px; font-weight: 700;
+      color: var(--text-primary);
+      background: linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.05));
+      border: 1px solid var(--border-medium);
+      border-bottom-width: 2px;
+      border-radius: 5px; padding: 2px 6px;
+      white-space: nowrap;
+    }
+    .scs-kbd-plus { color: var(--text-dim); font-size: 10px; font-weight: 700; }
+    .scs-combo-none { color: var(--text-dim); font-size: 11px; font-style: italic; }
+
+    /* ---------- 按钮 ---------- */
+    .scs-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+      font-size: 11px; font-weight: 600; font-family: inherit;
+      color: var(--text-secondary);
+      background: var(--surface-pill);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-md);
+      padding: 5px 11px; cursor: pointer;
+      transition: all var(--transition-fast);
+      white-space: nowrap;
+    }
+    .scs-btn:hover { border-color: var(--border-highlight); color: var(--text-primary); background: var(--surface-card-hover); }
+    .scs-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .scs-btn.primary { color: #c7d2fe; border-color: rgba(99, 102, 241, 0.5); background: var(--accent-indigo-dim); }
+    .scs-btn.primary:hover { border-color: var(--accent-indigo); color: #e0e7ff; background: rgba(99, 102, 241, 0.3); }
+    .scs-btn.danger { color: #fca5a5; border-color: rgba(239, 68, 68, 0.35); }
+    .scs-btn.danger:hover { border-color: var(--status-error); background: rgba(239, 68, 68, 0.12); color: #fecaca; }
+    .scs-btn.small { padding: 3px 8px; font-size: 10.5px; }
+    .scs-btn .scs-spin { animation: scs-rotate 0.9s linear infinite; display: inline-block; }
+    @keyframes scs-rotate { to { transform: rotate(360deg); } }
+
+    /* ---------- 表单 ---------- */
+    .scs-form {
+      background: var(--surface-overlay);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px 14px;
+    }
+    .scs-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+    .scs-field.full { grid-column: 1 / -1; }
+    .scs-field label { font-size: 11px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.02em; }
+    .scs-field .scs-hint { font-size: 10px; color: var(--text-dim); line-height: 1.4; }
+
+    .scs-input, .scs-select {
+      font-family: inherit; font-size: 12.5px; color: var(--text-primary);
+      background: var(--surface-sunken);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-md);
+      padding: 7px 10px; outline: none;
+      transition: border-color var(--transition-fast);
+      user-select: text;
+    }
+    .scs-input:focus, .scs-select:focus { border-color: var(--accent-indigo); }
+    .scs-input::placeholder { color: var(--text-dim); }
+    .scs-select { cursor: pointer; }
+    .scs-select option { background: #16202c; color: var(--text-primary); }
+    .scs-select optgroup { color: var(--text-muted); font-style: normal; }
+
+    .scs-recorder {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface-sunken);
+      border: 1px dashed var(--border-medium);
+      border-radius: var(--radius-md);
+      padding: 7px 10px; cursor: pointer;
+      transition: all var(--transition-fast);
+      min-height: 34px;
+    }
+    .scs-recorder:hover { border-color: var(--border-highlight); }
+    .scs-recorder.listening {
+      border-color: var(--accent-indigo);
+      border-style: solid;
+      background: var(--accent-indigo-dim);
+      animation: scs-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes scs-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.25); } 50% { box-shadow: 0 0 0 5px rgba(99, 102, 241, 0.08); } }
+    .scs-recorder .scs-recorder-text { font-size: 12px; color: var(--text-muted); flex: 1; user-select: text; }
+    .scs-recorder.listening .scs-recorder-text { color: #c7d2fe; }
+
+    .scs-check { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: 11.5px; color: var(--text-secondary); }
+    .scs-check input { accent-color: var(--accent-indigo); width: 14px; height: 14px; cursor: pointer; }
+    .scs-check-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+
+    /* ---------- 弹窗 ---------- */
+    .scs-modal-backdrop {
+      position: fixed; inset: 0; z-index: 50;
+      background: rgba(0, 0, 0, 0.55);
+      display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(3px);
+    }
+    .scs-modal-card {
+      width: min(640px, calc(100vw - 48px));
+      max-height: 80vh; display: flex; flex-direction: column;
+      background: var(--surface-overlay);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+    }
+    .scs-modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; border-bottom: 1px solid var(--border-subtle);
+      font-size: 13.5px; font-weight: 700;
+    }
+    .scs-modal-body { padding: 14px 16px; overflow-y: auto; }
+    .scs-modal-body .scs-hint { font-size: 11px; color: var(--text-dim); margin-bottom: 9px; line-height: 1.5; user-select: text; }
+    .scs-modal-body textarea {
+      width: 100%; height: 260px; resize: vertical;
+      font-family: Consolas, "Courier New", monospace; font-size: 11.5px; line-height: 1.55;
+      color: var(--text-secondary);
+      background: var(--surface-sunken);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-md); padding: 10px;
+      outline: none; user-select: text;
+    }
+    .scs-modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border-subtle); }
+
+    /* ---------- 其他 ---------- */
+    .scs-empty { font-size: 11.5px; color: var(--text-dim); padding: 10px 4px; font-style: italic; }
+    .scs-sep { border: none; border-top: 1px solid var(--border-subtle); margin: 18px 0 0; }
+    .scs-footnote { margin-top: 18px; font-size: 10.5px; color: var(--text-dim); line-height: 1.7; user-select: text; }
+    .scs-footnote b { color: var(--text-muted); font-weight: 600; }
+    .scs-toast {
+      position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(8px);
+      background: var(--surface-overlay); color: var(--text-primary);
+      border: 1px solid var(--border-medium); border-radius: var(--radius-md);
+      padding: 8px 16px; font-size: 12px; z-index: 60;
+      opacity: 0; pointer-events: none;
+      transition: opacity var(--transition-fast), transform var(--transition-fast);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      max-width: calc(100vw - 40px);
+    }
+    .scs-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .scs-toast.err { border-color: rgba(239, 68, 68, 0.5); }
+  </style>
+</head>
+<body>
+  <!-- ==================== 顶栏 ==================== -->
+  <div class="scs-header">
+    <div>
+      <h1>⌨️ 快捷键工坊</h1>
+      <div class="scs-sub">全局快捷键可视化配置中心 · 零宿主改动 · 兼容 OpenRevo 0.9.3</div>
+    </div>
+    <div class="scs-header-actions">
+      <button class="scs-btn" id="btn-reload" title="重新从宿主拉取当前已注册快捷键">↻ 刷新</button>
+      <button class="scs-btn primary" id="btn-export" title="生成 manifest.json 可用的 shortcuts 片段，粘贴进去即可开机自动生效">⬆ 导出固化</button>
+    </div>
+  </div>
+
+  <div class="scs-banner ok hidden" id="banner-restore"></div>
+  <div class="scs-banner warn hidden" id="banner-conflict"></div>
+  <div class="scs-banner hidden" id="banner-msg"></div>
+
+  <!-- ==================== 默认快捷键（manifest 声明式） ==================== -->
+  <div class="scs-section">
+    <div class="scs-section-title">
+      预置快捷键 <span class="scs-count" id="count-default"></span>
+      <span style="font-weight:400; font-size:10px; color:var(--text-dim);">来自 manifest.json，随 OpenRevo 启动自动生效，可改键/停用</span>
+    </div>
+    <div class="scs-rows" id="rows-default"></div>
+  </div>
+
+  <!-- ==================== 自定义快捷键 ==================== -->
+  <div class="scs-section">
+    <div class="scs-section-title">
+      我的自定义快捷键 <span class="scs-count" id="count-custom"></span>
+      <span style="font-weight:400; font-size:10px; color:var(--text-dim);">保存在本插件，打开本页自动恢复注册</span>
+    </div>
+    <div class="scs-rows" id="rows-custom"></div>
+    <div class="scs-empty" id="empty-custom">还没有自定义快捷键，用下方表单添加。</div>
+  </div>
+
+  <hr class="scs-sep" />
+
+  <!-- ==================== 新增 / 编辑表单 ==================== -->
+  <div class="scs-section">
+    <div class="scs-section-title" id="form-title">➕ 新增绑定</div>
+    <div class="scs-form">
+      <div class="scs-field">
+        <label>组合键（点击框内录制，或手动输入）</label>
+        <div class="scs-recorder" id="recorder" title="点击开始监听键盘，按下组合键自动捕获">
+          <span class="scs-kbd-group" id="recorder-keys"></span>
+          <span class="scs-recorder-text" id="recorder-text">点击此处，然后按下组合键…</span>
+        </div>
+        <div class="scs-hint">支持 Ctrl / Alt / Shift / Win 修饰键 + 字母/数字/F1-F24 等。Win 组合键若录制失败可手动输入；纯单键（无修饰键）会拦截正常打字，慎用。</div>
+      </div>
+      <div class="scs-field">
+        <label>名称（可选，自动生成）</label>
+        <input class="scs-input" id="f-name" placeholder="如：老板键" maxlength="40" />
+      </div>
+      <div class="scs-field">
+        <label>动作</label>
+        <select class="scs-select" id="f-action"></select>
+        <div class="scs-hint" id="f-action-desc"></div>
+      </div>
+      <div class="scs-field" id="f-payload-field" style="display:none;">
+        <label id="f-payload-label">参数</label>
+        <div id="f-payload-body"></div>
+      </div>
+      <div class="scs-field full">
+        <div class="scs-check-row">
+          <label class="scs-check"><input type="checkbox" id="f-osd" checked />触发时显示 OSD 屏幕浮层</label>
+          <label class="scs-check" title="开启后按键将被吃掉，不再传递给前台程序（游戏全屏防误触）"><input type="checkbox" id="f-swallow" />拦截按键（不传给前台程序）</label>
+          <div style="flex:1"></div>
+          <button class="scs-btn" id="btn-cancel" style="display:none;">取消编辑</button>
+          <button class="scs-btn primary" id="btn-save">保存并注册</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 宿主侧其他快捷键（只读） ==================== -->
+  <div class="scs-section">
+    <div class="scs-section-title">
+      宿主与其他插件的快捷键 <span class="scs-count" id="count-others"></span>
+      <span style="font-weight:400; font-size:10px; color:var(--text-dim);">只读 · 避免组合键冲突</span>
+    </div>
+    <div class="scs-rows" id="rows-others"></div>
+    <div class="scs-empty" id="empty-others">宿主当前没有注册其他快捷键。</div>
+  </div>
+
+  <div class="scs-footnote" id="footnote">
+    <b>持久化说明：</b>预置键随 OpenRevo 启动自动生效；自定义键保存在本机，<b>打开本页面时自动恢复注册</b>（宿主重启后首次触发前需打开一次本页）；要彻底开机自生效，点右上角「导出固化」把 JSON 粘贴进本插件 manifest.json 的 shortcuts 数组。<br />
+    <b>已知限制：</b>摄像头 / 麦克风 / 防休眠 / 显卡直连 / 电池限额暂无宿主快捷键动作（列表中已灰显）；同一组合键冲突时，仅最先注册的一条生效。
+  </div>
+
+  <!-- ==================== 导出弹窗 ==================== -->
+  <div class="scs-modal-backdrop" id="export-modal" style="display:none;">
+    <div class="scs-modal-card">
+      <div class="scs-modal-header">
+        <span>导出快捷键到 manifest.json</span>
+        <button class="scs-btn small" id="btn-export-close">✕ 关闭</button>
+      </div>
+      <div class="scs-modal-body">
+        <div class="scs-hint">
+          把下方片段粘贴进 <b>%APPDATA%\OpenRevo\plugins\shortcut-studio\manifest.json</b> 的 <b>"shortcuts": [ ... ]</b> 数组（替换原有内容），保存后在插件页重新开关一次本插件即可。此后所有快捷键随 OpenRevo 启动自动注册，无需再打开本页。
+        </div>
+        <textarea id="export-textarea" spellcheck="false" readonly></textarea>
+      </div>
+      <div class="scs-modal-actions">
+        <button class="scs-btn" id="btn-export-copy">复制到剪贴板</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="scs-toast" id="toast"></div>
+
+  <script>
+  /* ============================================================
+     快捷键工坊 主逻辑
+     传输层：优先使用宿主注入的 __OPENREVO_BRIDGE__（独立视窗模式），
+     否则走 Tab 沙盒 postMessage 桥（PluginTabHost 内建）。
+     ============================================================ */
+  (function () {
+    'use strict';
+
+    var PLUGIN_ID = 'shortcut-studio';
+    var LS_KEY = 'openrevo_shortcut_studio_overrides';
+    var LS_SEQ = 'openrevo_shortcut_studio_seq';
+
+    /* ---------- 动作目录（与宿主 ShortcutAction 枚举对齐） ---------- */
+    var ACTION_CATALOG = [
+      {
+        group: '硬件性能',
+        items: [
+          { type: 'ToggleFanBoost', label: '一键强冷 开/关', desc: '双风扇全速暴走散热' },
+          { type: 'CyclePowerMode', label: '循环切换性能模式', desc: '办公 → 均衡 → 狂暴 → 办公' },
+          { type: 'SetPowerMode', label: '直达性能模式', payloadKind: 'mode', desc: '直接切到指定档位，不循环' },
+          { type: 'ToggleRefreshRate', label: '刷新率瞬切', desc: '高刷 ↔ 60Hz 省电互换' },
+          { type: 'CycleKeyboardBrightness', label: '键盘背光亮度循环', desc: 'RGB 背光逐级调节' },
+          { type: 'TriggerOsdPreview', label: '唤起 OSD 预览', desc: '测试机甲屏幕浮层' }
+        ]
+      },
+      {
+        group: '设备开关',
+        items: [
+          { type: 'ToggleTouchpad', label: '触控板 开/关', desc: '' },
+          { type: 'ToggleWinLock', label: 'Win 键锁定 开/关', desc: '防游戏误触徽标键' },
+          { type: 'ToggleFnLock', label: 'Fn 键锁定 开/关', desc: '' },
+          { type: '__camera', label: '摄像头 开/关', unavailable: true, desc: '宿主快捷键总线暂未提供该动作' },
+          { type: '__mic', label: '麦克风 开/关', unavailable: true, desc: '宿主快捷键总线暂未提供该动作' },
+          { type: '__keepawake', label: '防休眠 开/关', unavailable: true, desc: '宿主快捷键总线暂未提供该动作' }
+        ]
+      },
+      {
+        group: '系统与电源',
+        items: [
+          { type: 'MonitorOff', label: '立即息屏', desc: '低功耗关屏（挂机必备）' },
+          { type: 'LockScreen', label: '锁定 Windows', desc: '' },
+          { type: 'LaunchApp', label: '启动程序 / 脚本', payloadKind: 'app', desc: '以 OpenRevo 权限拉起任意 exe / 脚本' }
+        ]
+      },
+      {
+        group: '音量媒体',
+        items: [
+          { type: 'VolumeMute', label: '静音', desc: '' },
+          { type: 'VolumeUp', label: '音量 +', desc: '' },
+          { type: 'VolumeDown', label: '音量 −', desc: '' }
+        ]
+      },
+      {
+        group: '插件联动',
+        items: [
+          { type: 'PluginEvent', label: '广播插件事件', payloadKind: 'event', desc: '向所有插件窗口广播自定义事件' }
+        ]
+      }
+    ];
+
+    var ALL_ACTIONS = {};
+    ACTION_CATALOG.forEach(function (g) {
+      g.items.forEach(function (it) { ALL_ACTIONS[it.type] = it; });
+    });
+
+    var MODE_NAMES = { 1: '办公', 2: '均衡', 3: '狂暴', 4: '自定义' };
+
+    /* ---------- 预置键（与 manifest.json shortcuts 保持一致） ---------- */
+    var DEFAULT_IDS = ['studio_fan_boost', 'studio_power_cycle', 'studio_refresh_toggle', 'studio_win_lock', 'studio_monitor_off'];
+    var DEFAULT_FALLBACK = {
+      studio_fan_boost: { name: '一键全速强冷', combo: 'Ctrl+Shift+F' },
+      studio_power_cycle: { name: '循环切换性能模式', combo: 'Ctrl+Shift+M' },
+      studio_refresh_toggle: { name: '刷新率瞬切 (高刷/省电)', combo: 'Ctrl+Shift+R' },
+      studio_win_lock: { name: 'Win 键锁定切换', combo: 'Ctrl+Shift+W' },
+      studio_monitor_off: { name: '挂机一键息屏', combo: 'Ctrl+Shift+L' }
+    };
+
+    /* ---------- 工具 ---------- */
+    function $(id) { return document.getElementById(id); }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function toast(msg, isErr) {
+      var t = $('toast');
+      t.textContent = msg;
+      t.className = 'scs-toast show' + (isErr ? ' err' : '');
+      clearTimeout(toast._t);
+      toast._t = setTimeout(function () { t.className = 'scs-toast'; }, 2600);
+    }
+    function setBanner(id, cls, html) {
+      var b = $(id);
+      if (!html) { b.className = 'scs-banner hidden'; b.innerHTML = ''; return; }
+      b.className = 'scs-banner ' + cls;
+      b.innerHTML = html;
+    }
+
+    /* ---------- 组合键解析 / 归一化（对齐宿主 ParsedKeyCombo） ---------- */
+    var KEY_ALIAS = {
+      CONTROL: 'CTRL', MENU: 'ALT', WINDOWS: 'WIN', SUPER: 'WIN',
+      RETURN: 'ENTER', ESCAPE: 'ESC', BACK: 'BACKSPACE',
+      DEL: 'DELETE', INS: 'INSERT', PRIOR: 'PAGEUP', NEXT: 'PAGEDOWN',
+      CAPSLOCK: 'CAPS', LBRACKET: '[', RBRACKET: ']', SEMICOLON: ';',
+      QUOTE: "'", COMMA: ',', PERIOD: '.', SLASH: '/', BACKSLASH: '\\',
+      GRAVE: '`', TILDE: '`', MUTE: 'VOLUMEMUTE', EQUAL: '=', MINUS: '-'
+    };
+    var MODS = { CTRL: 'Ctrl', ALT: 'Alt', SHIFT: 'Shift', WIN: 'Win' };
+
+    function normalizeCombo(combo) {
+      var parts = String(combo || '').split('+').map(function (s) { return s.trim().toUpperCase(); }).filter(Boolean);
+      var modSet = { CTRL: false, ALT: false, SHIFT: false, WIN: false };
+      var key = null;
+      parts.forEach(function (p) {
+        if (modSet.hasOwnProperty(p)) { modSet[p] = true; return; }
+        key = KEY_ALIAS[p] || p;
+      });
+      if (!key) return null;
+      var out = [];
+      ['CTRL', 'ALT', 'SHIFT', 'WIN'].forEach(function (m) { if (modSet[m]) out.push(MODS[m]); });
+      out.push(key.length === 1 ? key : (KEY_ALIAS[key] || key));
+      return out.join('+');
+    }
+
+    function comboToKeysHtml(combo) {
+      var n = normalizeCombo(combo);
+      if (!n) return '<span class="scs-combo-none">（无按键）</span>';
+      return n.split('+').map(function (k) {
+        return '<span class="scs-kbd">' + esc(k) + '</span>';
+      }).join('<span class="scs-kbd-plus">+</span>');
+    }
+
+    function actionLabel(action) {
+      if (!action) return '未知动作';
+      var meta = ALL_ACTIONS[action.type];
+      var base = meta ? meta.label : action.type;
+      if (action.type === 'SetPowerMode' && action.payload != null) base += ' · ' + (MODE_NAMES[action.payload] || ('#' + action.payload));
+      if (action.type === 'LaunchApp' && action.payload && action.payload.path) {
+        var segs = String(action.payload.path).split(/[\\/]/);
+        base += ' · ' + segs[segs.length - 1];
+      }
+      if (action.type === 'PluginEvent' && action.payload && action.payload.event_name) base += ' · ' + action.payload.event_name;
+      return base;
+    }
+
+    /* ---------- 传输层 ---------- */
+    var pendingGet = null;          // GET_SHORTCUTS 回调
+    var registerQueue = [];         // REGISTER / UNREGISTER 应答队列（FIFO）
+    var seq = 0;
+
+    function postToHost(action, payload) {
+      window.parent.postMessage({ action: action, payload: payload }, '*');
+    }
+
+    window.addEventListener('message', function (event) {
+      var d = event.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'OPENREVO_SHORTCUTS' && pendingGet) {
+        var cb = pendingGet; pendingGet = null; cb(d.payload || []);
+      } else if (d.type === 'OPENREVO_SHORTCUT_REGISTERED' && registerQueue.length) {
+        registerQueue.shift()(d.success === true);
+      } else if (d.type === 'OPENREVO_SHORTCUT_UNREGISTERED' && registerQueue.length) {
+        registerQueue.shift()(d.success === true);
+      }
+    });
+
+    function withTimeout(fn, ms) {
+      return new Promise(function (resolve, reject) {
+        var done = false;
+        var timer = setTimeout(function () {
+          if (!done) { done = true; reject(new Error('宿主响应超时')); }
+        }, ms || 4000);
+        fn(function (val) {
+          if (!done) { done = true; clearTimeout(timer); resolve(val); }
+        }, function (err) {
+          if (!done) { done = true; clearTimeout(timer); reject(err); }
+        });
+      });
+    }
+
+    var api = {
+      /* 独立视窗模式可直接拿到宿主 invoke；Tab 模式走 postMessage 桥 */
+      bridge: function () {
+        try {
+          if (window.parent && window.parent.__OPENREVO_BRIDGE__ && window.parent.__OPENREVO_BRIDGE__.invoke) {
+            return window.parent.__OPENREVO_BRIDGE__;
+          }
+        } catch (e) { /* 跨域时忽略 */ }
+        return null;
+      },
+      getShortcuts: function () {
+        var b = api.bridge();
+        if (b) return b.invoke('get_registered_shortcuts');
+        return withTimeout(function (resolve, reject) {
+          pendingGet = resolve;
+          postToHost('GET_SHORTCUTS');
+        });
+      },
+      register: function (binding) {
+        var b = api.bridge();
+        if (b) return b.invoke('register_custom_shortcut', { binding: binding }).catch(function (e) { throw e; });
+        return withTimeout(function (resolve) {
+          registerQueue.push(resolve);
+          postToHost('REGISTER_SHORTCUT', binding);
+        });
+      },
+      unregister: function (id) {
+        var b = api.bridge();
+        if (b) return b.invoke('unregister_custom_shortcut', { id: id });
+        return withTimeout(function (resolve) {
+          registerQueue.push(resolve);
+          postToHost('UNREGISTER_SHORTCUT', { id: id });
+        });
+      },
+      trigger: function (action, osd) {
+        var b = api.bridge();
+        if (b) return b.invoke('trigger_shortcut_action', { action: action, osd: osd });
+        postToHost('TRIGGER_SHORTCUT_ACTION', { action: action, osd: osd });
+        return Promise.resolve();
+      }
+    };
+
+    /* ---------- 本地持久化（localStorage 覆盖层） ----------
+       条目结构：{ id, name, combo, action, osd, swallow, origin: 'custom'|'manifest', disabled?:true }
+       origin=manifest 表示对预置键的改键/停用覆盖。 */
+    function loadOverrides() {
+      try {
+        var raw = localStorage.getItem(LS_KEY);
+        var arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr : [];
+      } catch (e) { return []; }
+    }
+    function saveOverrides(list) {
+      localStorage.setItem(LS_KEY, JSON.stringify(list));
+    }
+    function nextCustomId() {
+      var n = parseInt(localStorage.getItem(LS_SEQ) || '0', 10) + 1;
+      localStorage.setItem(LS_SEQ, String(n));
+      return 'scs_custom_' + n;
+    }
+
+    /* ---------- 状态 ---------- */
+    var liveShortcuts = [];     // 宿主实时注册表快照
+    var overrides = loadOverrides();
+    var editingId = null;       // 正在编辑的条目 id（预置或自定义）
+    var editingOrigin = null;
+    var recording = false;
+    var formCombo = '';
+    var restoredCount = 0;
+    var restoreFailed = 0;
+
+    function overrideOf(id) {
+      for (var i = 0; i < overrides.length; i++) if (overrides[i].id === id) return overrides[i];
+      return null;
+    }
+
+    /* ---------- 渲染 ---------- */
+    function computeConflicts() {
+      // 统计所有 enabled 绑定的归一化组合键 → 重复即冲突
+      var map = {};
+      liveShortcuts.forEach(function (s) {
+        if (s.enabled === false) return;
+        var n = normalizeCombo(s.combo);
+        if (!n) return;
+        (map[n] = map[n] || []).push(s.id || s.name);
+      });
+      var conflicts = {};
+      Object.keys(map).forEach(function (n) { if (map[n].length > 1) conflicts[n] = true; });
+      return conflicts;
+    }
+
+    function rowHtml(binding, opts) {
+      var n = normalizeCombo(binding.combo);
+      var conflict = opts.conflicts[n];
+      var badges = '';
+      if (conflict) badges += '<span class="scs-badge conflict" title="该组合键已被多条绑定占用，仅最先注册的一条生效">⚠ 冲突</span>';
+      if (opts.originBadge) badges += opts.originBadge;
+      var btns = '';
+      if (!opts.readonly) {
+        btns += '<button class="scs-btn small" data-act="test" data-id="' + esc(binding.id) + '" title="立即触发一次测试效果">▶ 测试</button>';
+        btns += '<button class="scs-btn small" data-act="edit" data-id="' + esc(binding.id) + '">✎ 编辑</button>';
+        btns += opts.deleteLabel
+          ? '<button class="scs-btn small danger" data-act="delete" data-id="' + esc(binding.id) + '">' + opts.deleteLabel + '</button>'
+          : '<button class="scs-btn small" data-act="restore" data-id="' + esc(binding.id) + '" title="清除改键/停用覆盖，恢复 manifest 原始配置">↩ 还原</button>';
+      }
+      return '<div class="scs-row' + (conflict ? ' conflict' : '') + (opts.dim ? ' disabled-row' : '') + '">' +
+        '<span class="scs-kbd-group">' + comboToKeysHtml(binding.combo) + '</span>' +
+        '<div class="scs-row-info">' +
+          '<span class="scs-row-name">' + esc(binding.name || binding.id) + '</span>' +
+          '<span class="scs-row-desc">' + esc(actionLabel(binding.action)) +
+            (binding.osd ? '' : ' · 无OSD') + (binding.swallow ? ' · 拦截' : '') + '</span>' +
+        '</div>' + badges + '<div class="scs-row-actions">' + btns + '</div></div>';
+    }
+
+    function render() {
+      var conflicts = computeConflicts();
+      var used = {};
+
+      // ---- 预置键 ----
+      var liveByPlugin = {};
+      liveShortcuts.forEach(function (s) {
+        if (s.plugin_id === PLUGIN_ID || DEFAULT_IDS.indexOf(s.id) >= 0) liveByPlugin[s.id] = s;
+      });
+      var html = '';
+      DEFAULT_IDS.forEach(function (id) {
+        var ov = overrideOf(id);
+        var live = liveByPlugin[id];
+        var b = ov || live || { id: id, name: DEFAULT_FALLBACK[id].name, combo: DEFAULT_FALLBACK[id].combo, action: { type: '__unknown' } };
+        if (!b.action) b.action = live ? live.action : { type: '__unknown' };
+        used[id] = true;
+        var dim = b.enabled === false;
+        var badge = ov
+          ? (dim ? '<span class="scs-badge off">已停用</span>' : '<span class="scs-badge custom">已改键</span>')
+          : '<span class="scs-badge default">预置</span>';
+        html += rowHtml(b, { conflicts: conflicts, originBadge: badge, dim: dim, deleteLabel: dim ? null : undefined });
+      });
+      $('rows-default').innerHTML = html;
+      $('count-default').textContent = DEFAULT_IDS.length + ' 条';
+
+      // ---- 自定义键 ----
+      html = '';
+      var customs = overrides.filter(function (o) { return o.origin === 'custom'; });
+      customs.forEach(function (o) {
+        used[o.id] = true;
+        var live = null;
+        liveShortcuts.forEach(function (s) { if (s.id === o.id) live = s; });
+        var dim = o.disabled || !live;   // 未恢复成功也置灰
+        var badge = dim ? '<span class="scs-badge off">未注册</span>' : '<span class="scs-badge custom">自定义</span>';
+        var b = { id: o.id, name: o.name, combo: o.combo, action: o.action, osd: o.osd, swallow: o.swallow, enabled: !o.disabled };
+        html += rowHtml(b, { conflicts: conflicts, originBadge: badge, dim: dim, deleteLabel: '✕ 删除' });
+      });
+      $('rows-custom').innerHTML = html;
+      $('count-custom').textContent = customs.length + ' 条';
+      $('empty-custom').style.display = customs.length ? 'none' : '';
+
+      // ---- 其他 ----
+      html = '';
+      var others = liveShortcuts.filter(function (s) { return !used[s.id]; });
+      others.forEach(function (s) {
+        var badge = s.plugin_id
+          ? '<span class="scs-badge default" title="来自插件 ' + esc(s.plugin_id) + '">插件</span>'
+          : '<span class="scs-badge default" title="OpenRevo 系统内置">系统</span>';
+        html += rowHtml(s, { conflicts: conflicts, originBadge: badge, readonly: true });
+      });
+      $('rows-others').innerHTML = html;
+      $('count-others').textContent = others.length + ' 条';
+      $('empty-others').style.display = others.length ? 'none' : '';
+
+      // ---- 冲突横幅 ----
+      var conflictList = Object.keys(conflicts);
+      setBanner('banner-conflict', conflictList.length ? 'warn' : '', conflictList.length
+        ? '⚠ 检测到 ' + conflictList.length + ' 组组合键冲突（' + esc(conflictList.slice(0, 3).join('、')) + (conflictList.length > 3 ? ' 等' : '') + '）。同一组合键只有最先注册的一条会生效，请修改其中一条。'
+        : '');
+
+      bindRowEvents();
+    }
+
+    function bindRowEvents() {
+      document.querySelectorAll('[data-act]').forEach(function (btn) {
+        btn.onclick = function () {
+          var id = btn.getAttribute('data-id');
+          var act = btn.getAttribute('data-act');
+          if (act === 'test') doTest(id);
+          else if (act === 'edit') doEdit(id);
+          else if (act === 'delete') doDelete(id);
+          else if (act === 'restore') doRestore(id);
+        };
+      });
+    }
+
+    /* ---------- 行为 ---------- */
+    function doTest(id) {
+      var target = null;
+      liveShortcuts.forEach(function (s) { if (s.id === id) target = s; });
+      if (!target) { var ov = overrideOf(id); if (ov) target = ov; }
+      if (!target || !target.action) { toast('找不到该绑定', true); return; }
+      api.trigger(target.action, target.osd !== false)
+        .then(function () { toast('已触发：' + (target.name || id)); })
+        .catch(function (e) { toast('触发失败：' + (e && e.message ? e.message : e), true); });
+    }
+
+    function doDelete(id) {
+      overrides = overrides.filter(function (o) { return o.id !== id; });
+      saveOverrides(overrides);
+      api.unregister(id)
+        .then(function () { return refreshLive(); })
+        .then(function () { toast('已删除'); render(); })
+        .catch(function () { render(); });
+    }
+
+    function doRestore(id) {
+      overrides = overrides.filter(function (o) { return o.id !== id; });
+      saveOverrides(overrides);
+      // 重新触发宿主加载 manifest 原始快捷键：先注销，靠用户在插件页重新开关或重启恢复；
+      // 这里直接按 manifest 默认值重新注册，效果等同还原。
+      var fb = DEFAULT_FALLBACK[id];
+      var actionByType = {
+        studio_fan_boost: { type: 'ToggleFanBoost' },
+        studio_power_cycle: { type: 'CyclePowerMode' },
+        studio_refresh_toggle: { type: 'ToggleRefreshRate' },
+        studio_win_lock: { type: 'ToggleWinLock' },
+        studio_monitor_off: { type: 'MonitorOff' }
+      };
+      if (fb && actionByType[id]) {
+        api.register({ id: id, name: fb.name, combo: fb.combo, action: actionByType[id], osd: id !== 'studio_monitor_off', enabled: true, swallow: false, plugin_id: PLUGIN_ID })
+          .then(function () { return refreshLive(); })
+          .then(function () { toast('已还原为预置配置'); render(); })
+          .catch(function (e) { toast('还原失败：' + (e && e.message ? e.message : e), true); render(); });
+      } else {
+        refreshLive().then(render);
+      }
+    }
+
+    function doEdit(id) {
+      var target = overrideOf(id);
+      if (!target) {
+        liveShortcuts.forEach(function (s) { if (s.id === id) target = s; });
+        if (target) target = JSON.parse(JSON.stringify(target));
+      }
+      if (!target) return;
+      editingId = id;
+      editingOrigin = target.origin === 'manifest' ? 'manifest' : (DEFAULT_IDS.indexOf(id) >= 0 ? 'manifest' : 'custom');
+      fillForm(target);
+      $('btn-cancel').style.display = '';
+      $('form-title').textContent = '✎ 编辑：' + (target.name || id);
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    }
+
+    /* ---------- 表单 ---------- */
+    function buildActionSelect() {
+      var sel = $('f-action');
+      var html = '';
+      ACTION_CATALOG.forEach(function (g) {
+        html += '<optgroup label="' + esc(g.group) + '">';
+        g.items.forEach(function (it) {
+          html += '<option value="' + esc(it.type) + '"' + (it.unavailable ? ' disabled' : '') + '>' +
+            esc(it.label) + (it.unavailable ? '（宿主暂不支持）' : '') + '</option>';
+        });
+        html += '</optgroup>';
+      });
+      sel.innerHTML = html;
+      sel.onchange = function () { renderPayloadEditor(); };
+    }
+
+    function renderPayloadEditor(prefill) {
+      var meta = ALL_ACTIONS[$('f-action').value];
+      $('f-action-desc').textContent = meta ? (meta.desc || '') : '';
+      var field = $('f-payload-field');
+      var body = $('f-payload-body');
+      body.innerHTML = '';
+      if (!meta || !meta.payloadKind) { field.style.display = 'none'; return; }
+      field.style.display = 'flex';
+      if (meta.payloadKind === 'mode') {
+        $('f-payload-label').textContent = '目标模式';
+        var opts = '';
+        [1, 2, 3, 4].forEach(function (m) {
+          opts += '<option value="' + m + '"' + ((prefill && prefill.mode === m) || (!prefill && m === 3) ? ' selected' : '') + '>' + m + ' · ' + MODE_NAMES[m] + '</option>';
+        });
+        body.innerHTML = '<select class="scs-select" id="f-pmode" style="width:100%">' + opts + '</select>';
+      } else if (meta.payloadKind === 'app') {
+        $('f-payload-label').textContent = '程序路径与参数';
+        body.innerHTML =
+          '<input class="scs-input" id="f-appath" placeholder="C:\\Path\\to\\app.exe" style="width:100%;margin-bottom:6px" value="' + esc(prefill && prefill.path || '') + '" />' +
+          '<input class="scs-input" id="f-apargs" placeholder="启动参数（空格分隔，可留空）" style="width:100%" value="' + esc(prefill && prefill.args ? preflightJoin(prefill.args) : '') + '" />';
+      } else if (meta.payloadKind === 'event') {
+        $('f-payload-label').textContent = '事件名与载荷';
+        body.innerHTML =
+          '<input class="scs-input" id="f-evname" placeholder="事件名，如 plugin:mypet:boost" style="width:100%;margin-bottom:6px" value="' + esc(prefill && prefill.event_name || '') + '" />' +
+          '<input class="scs-input" id="f-evpayload" placeholder="payload JSON（可留空）" style="width:100%" value="' + esc(prefill && prefill.payload != null && typeof prefill.payload === 'object' ? JSON.stringify(prefill.payload) : '') + '" />';
+      }
+    }
+    function preflightJoin(args) {
+      return Array.isArray(args) ? args.join(' ') : String(args || '');
+    }
+
+    function readFormAction() {
+      var meta = ALL_ACTIONS[$('f-action').value];
+      if (!meta) return null;
+      if (!meta.payloadKind) return { type: meta.type };
+      if (meta.payloadKind === 'mode') {
+        return { type: 'SetPowerMode', payload: parseInt($('f-pmode').value, 10) };
+      }
+      if (meta.payloadKind === 'app') {
+        var path = $('f-appath').value.trim();
+        if (!path) return null;
+        var args = $('f-apargs').value.trim();
+        return { type: 'LaunchApp', payload: { path: path, args: args ? args.split(/\s+/) : [] } };
+      }
+      if (meta.payloadKind === 'event') {
+        var evName = $('f-evname').value.trim();
+        if (!evName) return null;
+        var evPayload = {};
+        var raw = $('f-evpayload').value.trim();
+        if (raw) {
+          try { evPayload = JSON.parse(raw); } catch (e) { return { __error: '事件 payload 不是合法 JSON' }; }
+        }
+        return { type: 'PluginEvent', payload: { event_name: evName, payload: evPayload } };
+      }
+      return { type: meta.type };
+    }
+
+    function fillForm(binding) {
+      setRecorderCombo(binding.combo || '');
+      $('f-name').value = binding.name || '';
+      var t = binding.action && binding.action.type;
+      if (t && ALL_ACTIONS[t]) $('f-action').value = t;
+      renderPayloadEditor(binding.action && binding.action.payload);
+      $('f-osd').checked = binding.osd !== false;
+      $('f-swallow').checked = !!binding.swallow;
+    }
+
+    function clearForm() {
+      editingId = null;
+      editingOrigin = null;
+      setRecorderCombo('');
+      $('f-name').value = '';
+      $('f-action').selectedIndex = 0;
+      renderPayloadEditor();
+      $('f-osd').checked = true;
+      $('f-swallow').checked = false;
+      $('btn-cancel').style.display = 'none';
+      $('form-title').textContent = '➕ 新增绑定';
+    }
+
+    function setRecorderCombo(combo) {
+      formCombo = combo || '';
+      $('recorder-keys').innerHTML = comboToKeysHtml(formCombo);
+      $('recorder-text').textContent = formCombo ? '点击重新录制，或保持现状' : '点击此处，然后按下组合键…';
+    }
+
+    /* ---------- 录制器 ---------- */
+    function keyNameFromEvent(e) {
+      var k = e.key;
+      if (!k) return null;
+      if (k.length === 1) {
+        if (/[a-zA-Z0-9]/.test(k)) return k.toUpperCase();
+        if ('-=[];\',./\\`'.indexOf(k) >= 0) return k;
+        if (k === ' ') return 'Space';
+        return null;
+      }
+      var map = {
+        Tab: 'Tab', Enter: 'Enter', Backspace: 'Backspace', Delete: 'Delete', Insert: 'Insert',
+        Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown',
+        ArrowLeft: 'Left', ArrowUp: 'Up', ArrowRight: 'Right', ArrowDown: 'Down',
+        CapsLock: 'Caps', NumLock: 'NumLock', ScrollLock: 'Scroll',
+        PrintScreen: 'PrintScreen', Pause: 'Pause'
+      };
+      if (map[k]) return map[k];
+      if (/^F([1-9]|1[0-9]|2[0-4])$/.test(k)) return k;
+      return null;
+    }
+
+    function startRecording() {
+      recording = true;
+      $('recorder').classList.add('listening');
+      $('recorder-text').textContent = '正在监听…按下组合键（Esc 取消）';
+    }
+    function stopRecording() {
+      recording = false;
+      $('recorder').classList.remove('listening');
+    }
+
+    $('recorder').addEventListener('click', function () {
+      if (!recording) startRecording();
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (!recording) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Escape') { stopRecording(); setRecorderCombo(formCombo); return; }
+      if (['Control', 'Alt', 'Shift', 'Meta'].indexOf(e.key) >= 0) {
+        $('recorder-text').textContent = '修饰键：' + [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Win'].filter(Boolean).join(' + ') + ' …再按主键';
+        return;
+      }
+      var name = keyNameFromEvent(e);
+      if (!name) return;
+      var mods = [];
+      if (e.ctrlKey) mods.push('Ctrl');
+      if (e.altKey) mods.push('Alt');
+      if (e.shiftKey) mods.push('Shift');
+      if (e.metaKey) mods.push('Win');
+      if (!mods.length && !/^F\d/.test(name)) {
+        $('recorder-text').textContent = '⚠ 纯单键会拦截打字，请加 Ctrl/Alt/Shift 修饰键';
+        return;
+      }
+      var combo = mods.concat([name]).join('+');
+      setRecorderCombo(combo);
+      stopRecording();
+      if (e.metaKey) toast('提示：Win 组合键若录制异常，可直接在输入框手动修正');
+    });
+
+    /* ---------- 保存 ---------- */
+    $('btn-cancel').onclick = clearForm;
+
+    $('btn-save').onclick = function () {
+      var combo = normalizeCombo(formCombo);
+      if (!combo) { toast('请先录制或输入组合键', true); return; }
+      var action = readFormAction();
+      if (!action) { toast('请补全动作参数（路径 / 事件名等）', true); return; }
+      if (action.__error) { toast(action.__error, true); return; }
+
+      var meta = ALL_ACTIONS[action.type] || {};
+      var name = $('f-name').value.trim() || (meta.label || action.type) ;
+      var isManifestEdit = editingOrigin === 'manifest' && editingId;
+      var id = editingId || nextCustomId();
+
+      var binding = {
+        id: id,
+        name: name,
+        combo: combo,
+        action: action,
+        osd: $('f-osd').checked,
+        enabled: true,
+        swallow: $('f-swallow').checked,
+        plugin_id: PLUGIN_ID
+      };
+
+      api.register(binding)
+        .then(function (ok) {
+          if (!ok) throw new Error('宿主拒绝注册');
+          // 更新覆盖层
+          var entry = {
+            id: id, name: name, combo: combo, action: action,
+            osd: binding.osd, swallow: binding.swallow,
+            origin: isManifestEdit ? 'manifest' : 'custom'
+          };
+          overrides = overrides.filter(function (o) { return o.id !== id; });
+          overrides.push(entry);
+          saveOverrides(overrides);
+          return refreshLive();
+        })
+        .then(function () {
+          toast('已注册生效：' + name);
+          clearForm();
+          render();
+        })
+        .catch(function (e) {
+          toast('注册失败：' + (e && e.message ? e.message : e), true);
+        });
+    };
+
+    /* ---------- 导出 ---------- */
+    $('btn-export').onclick = function () {
+      var arr = [];
+      DEFAULT_IDS.forEach(function (id) {
+        var ov = overrideOf(id);
+        var live = null;
+        liveShortcuts.forEach(function (s) { if (s.id === id) live = s; });
+        var fb = DEFAULT_FALLBACK[id];
+        var actions = {
+          studio_fan_boost: { type: 'ToggleFanBoost' },
+          studio_power_cycle: { type: 'CyclePowerMode' },
+          studio_refresh_toggle: { type: 'ToggleRefreshRate' },
+          studio_win_lock: { type: 'ToggleWinLock' },
+          studio_monitor_off: { type: 'MonitorOff' }
+        };
+        var b = (ov && !ov.disabled) ? ov : (live && live.enabled !== false ? live : null);
+        if (!b) return; // 已停用的不导出
+        arr.push({
+          id: id,
+          name: b.name || fb.name,
+          combo: b.combo || fb.combo,
+          action: (b.action && b.action.type) ? b.action : actions[id],
+          osd: b.osd !== false,
+          swallow: !!b.swallow
+        });
+      });
+      overrides.filter(function (o) { return o.origin === 'custom' && !o.disabled; }).forEach(function (o) {
+        arr.push({ id: o.id, name: o.name, combo: o.combo, action: o.action, osd: o.osd !== false, swallow: !!o.swallow });
+      });
+      $('export-textarea').value = JSON.stringify(arr, null, 2);
+      $('export-modal').style.display = 'flex';
+    };
+    $('btn-export-close').onclick = function () { $('export-modal').style.display = 'none'; };
+    $('btn-export-copy').onclick = function () {
+      var ta = $('export-textarea');
+      ta.removeAttribute('readonly');
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) {}
+      if (!ok && navigator.clipboard) {
+        navigator.clipboard.writeText(ta.value).then(function () { toast('已复制'); }, function () { toast('请手动 Ctrl+C 复制', true); });
+      } else {
+        toast(ok ? '已复制到剪贴板' : '请手动 Ctrl+C 复制', !ok);
+      }
+      ta.setAttribute('readonly', '');
+    };
+
+    /* ---------- 刷新 / 恢复 ---------- */
+    function refreshLive(retry) {
+      var attempt = retry || 0;
+      return api.getShortcuts().catch(function (err) {
+        if (attempt < 3) {
+          return new Promise(function (resolve) {
+            setTimeout(function () { resolve(refreshLive(attempt + 1)); }, 900);
+          });
+        }
+        throw err;
+      }).then(function (list) {
+        liveShortcuts = list || [];
+        return liveShortcuts;
+      });
+    }
+
+    function restoreOverrides() {
+      var pending = overrides.filter(function (o) { return !o.disabled; });
+      if (!pending.length) return Promise.resolve(0);
+      var chain = Promise.resolve();
+      var okCount = 0;
+      pending.forEach(function (o) {
+        chain = chain.then(function () {
+          return api.register({
+            id: o.id, name: o.name, combo: o.combo, action: o.action,
+            osd: o.osd !== false, enabled: true, swallow: !!o.swallow, plugin_id: PLUGIN_ID
+          }).then(function (ok) {
+            if (ok) okCount++; else restoreFailed++;
+          }).catch(function () { restoreFailed++; });
+        });
+      });
+      return chain.then(function () { return okCount; });
+    }
+
+    $('btn-reload').onclick = function () {
+      refreshLive().then(function () { render(); toast('已刷新'); }).catch(function (e) {
+        toast('无法连接宿主：' + (e && e.message ? e.message : e), true);
+      });
+    };
+
+    /* ---------- 启动 ---------- */
+    buildActionSelect();
+    renderPayloadEditor();
+
+    restoreOverrides()
+      .then(function (n) {
+        restoredCount = n;
+        return refreshLive();
+      })
+      .then(function () {
+        render();
+        if (restoredCount > 0 && restoreFailed === 0) {
+          setBanner('banner-restore', 'ok', '✓ 已自动恢复 ' + restoredCount + ' 条自定义/改键快捷键（宿主重启后首次打开本页时执行，属正常机制）');
+        } else if (restoreFailed > 0) {
+          setBanner('banner-restore', 'warn', '⚠ 恢复了 ' + restoredCount + ' 条，' + restoreFailed + ' 条注册失败（组合键可能被占用或格式无效）');
+        }
+      })
+      .catch(function (e) {
+        setBanner('banner-msg', 'error', '✕ 无法连接宿主快捷键总线：' + esc(e && e.message ? e.message : e) + '。请确认 OpenRevo 版本 ≥ 0.9.3 后点击「刷新」重试。');
+        render();
+      });
+  })();
+  </script>
+</body>
+</html>

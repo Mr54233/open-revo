@@ -1,0 +1,51 @@
+{
+  "id": "shortcut-studio",
+  "name": "快捷键工坊",
+  "version": "1.0.0",
+  "author": "Mr54233",
+  "description": "可视化全局快捷键配置中心：录制组合键绑定强冷/性能模式/刷新率等 16 种动作，支持冲突检测与自定义键重启自动恢复。零宿主改动，兼容 OpenRevo 0.9.3。",
+  "type": "tab",
+  "entry": "index.html",
+  "telemetry": {
+    "enabled": false
+  },
+  "permissions": [],
+  "min_host_version": "0.9.3",
+  "shortcuts": [
+    {
+      "id": "studio_fan_boost",
+      "name": "一键全速强冷",
+      "combo": "Ctrl+Shift+F",
+      "action": { "type": "ToggleFanBoost" },
+      "osd": true
+    },
+    {
+      "id": "studio_power_cycle",
+      "name": "循环切换性能模式",
+      "combo": "Ctrl+Shift+M",
+      "action": { "type": "CyclePowerMode" },
+      "osd": true
+    },
+    {
+      "id": "studio_refresh_toggle",
+      "name": "刷新率瞬切 (高刷/省电)",
+      "combo": "Ctrl+Shift+R",
+      "action": { "type": "ToggleRefreshRate" },
+      "osd": true
+    },
+    {
+      "id": "studio_win_lock",
+      "name": "Win 键锁定切换",
+      "combo": "Ctrl+Shift+W",
+      "action": { "type": "ToggleWinLock" },
+      "osd": true
+    },
+    {
+      "id": "studio_monitor_off",
+      "name": "挂机一键息屏",
+      "combo": "Ctrl+Shift+L",
+      "action": { "type": "MonitorOff" },
+      "osd": false
+    }
+  ]
+}
