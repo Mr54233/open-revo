@@ -791,8 +791,8 @@
     }
 
     function doRestore(id) {
-      // 系统内置键覆写 → 重注册回宿主原始值
-      if (SYS_DEFAULTS[id]) {
+      // 系统内置键覆写（仅限非预置的系统键）→ 重注册回宿主原始值
+      if (SYS_DEFAULTS[id] && DEFAULT_IDS.indexOf(id) < 0) {
         restoreSysOverride(id)
           .then(function () { toast('已还原系统原始快捷键'); render(); })
           .catch(function (e) { toast('还原失败：' + (e && e.message ? e.message : e), true); render(); });
@@ -854,8 +854,8 @@
 
     function doEdit(id) {
       var target = null;
-      // 系统覆写模式：直接进入表单，保存时以相同 ID 注册实现顶替
-      if (SYS_DEFAULTS[id]) {
+      // 系统覆写模式（仅限非预置的系统键）：直接进入表单，保存时以相同 ID 注册实现顶替
+      if (SYS_DEFAULTS[id] && DEFAULT_IDS.indexOf(id) < 0) {
         var live = null;
         liveShortcuts.forEach(function (s) { if (s.id === id) live = s; });
         var fbSys = SYS_DEFAULTS[id];
