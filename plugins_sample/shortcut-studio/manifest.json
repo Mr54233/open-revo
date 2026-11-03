@@ -15,35 +15,35 @@
     {
       "id": "studio_fan_boost",
       "name": "一键全速强冷",
-      "combo": "Ctrl+Shift+F",
+      "combo": "Ctrl+Alt+Shift+X",
       "action": { "type": "ToggleFanBoost" },
       "osd": true
     },
     {
       "id": "studio_power_cycle",
       "name": "循环切换性能模式",
-      "combo": "Ctrl+Shift+M",
+      "combo": "Ctrl+Alt+Shift+M",
       "action": { "type": "CyclePowerMode" },
       "osd": true
     },
     {
       "id": "studio_refresh_toggle",
       "name": "刷新率瞬切 (高刷/省电)",
-      "combo": "Ctrl+Shift+R",
+      "combo": "Ctrl+Alt+Shift+R",
       "action": { "type": "ToggleRefreshRate" },
       "osd": true
     },
     {
       "id": "studio_win_lock",
       "name": "Win 键锁定切换",
-      "combo": "Ctrl+Shift+W",
+      "combo": "Ctrl+Alt+Shift+W",
       "action": { "type": "ToggleWinLock" },
       "osd": true
     },
     {
       "id": "studio_monitor_off",
       "name": "挂机一键息屏",
-      "combo": "Ctrl+Shift+L",
+      "combo": "Ctrl+Alt+Shift+L",
       "action": { "type": "MonitorOff" },
       "osd": false
     }

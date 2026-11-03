@@ -34,13 +34,17 @@ OpenRevo **Tab 型第三方插件**：可视化全局快捷键配置中心。在
 
 ## 预置快捷键
 
+统一采用 `Ctrl+Alt+Shift` 三修饰前缀（宿主系统快捷键与常见软件均不占用）：
+
 | 组合键 | 动作 |
 |---|---|
-| `Ctrl+Shift+F` | 一键全速强冷 |
-| `Ctrl+Shift+M` | 循环切换性能模式 |
-| `Ctrl+Shift+R` | 刷新率瞬切（高刷/省电） |
-| `Ctrl+Shift+W` | Win 键锁定切换 |
-| `Ctrl+Shift+L` | 立即息屏 |
+| `Ctrl+Alt+Shift+X` | 一键全速强冷 |
+| `Ctrl+Alt+Shift+M` | 循环切换性能模式 |
+| `Ctrl+Alt+Shift+R` | 刷新率瞬切（高刷/省电） |
+| `Ctrl+Alt+Shift+W` | Win 键锁定切换 |
+| `Ctrl+Alt+Shift+L` | 立即息屏 |
+
+> ⚠️ 避坑说明：宿主 0.9.3 启动时会注册内置系统快捷键 `Ctrl+Shift+F` / `Ctrl+Shift+M` / `Ctrl+Shift+R`（强冷 / 循环性能模式 / 刷新率），这些组合键**已被占用**，不要再用。本插件预置键全部改用 `Ctrl+Alt+Shift` 前缀以规避冲突。
 
 预置键随 OpenRevo 启动自动生效（宿主加载 manifest 声明式 `shortcuts`）。
 
